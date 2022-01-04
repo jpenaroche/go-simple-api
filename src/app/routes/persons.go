@@ -1,8 +1,8 @@
 package routes
 
 import (
-	"github.com/jpenaroche/go-simple-api/api/handlers"
-	"github.com/jpenaroche/go-simple-api/utils"
+	"github.com/jpenaroche/go-simple-api/src/app/handlers"
+	"github.com/jpenaroche/go-simple-api/src/utils"
 )
 
 var Persons []utils.RouteParameter = []utils.RouteParameter{

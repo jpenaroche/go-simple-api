@@ -6,8 +6,8 @@ import (
 	"net/http"
 	"strconv"
 
-	"github.com/jpenaroche/go-simple-api/api/schemas"
-	"github.com/jpenaroche/go-simple-api/utils"
+	"github.com/jpenaroche/go-simple-api/src/app/schemas"
+	"github.com/jpenaroche/go-simple-api/src/utils"
 )
 
 var people []schemas.Person = []schemas.Person{

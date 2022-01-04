@@ -114,7 +114,6 @@ func (r *Router) ProcessRoutes(routes map[string][]RouteParameter) *Router {
 
 func (r *Router) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	route := req.URL.Path
-	fmt.Println(r)
 	for _, r := range r.routes[HttpVerb(req.Method)] {
 		parameters, err := checkRoute(route, r)
 		if err != nil {

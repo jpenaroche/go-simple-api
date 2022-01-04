@@ -1,4 +1,4 @@
-package persons
+package handlers
 
 import (
 	"encoding/json"

@@ -3,6 +3,7 @@ package utils
 import (
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"regexp"
 	"strings"
@@ -23,45 +24,60 @@ const (
 	Patch  HttpVerb = "PATCH"
 )
 
-type Route struct {
+type RouteParameter struct {
 	Path    string
 	Verb    HttpVerb
 	Handler func(http.ResponseWriter, *Request)
 }
-
-const uriParameter = `(/\w+)/(?P<params>{(?P<key>\w+)\:(?P<reg>[^{}]+)})?`
-
-func getParameters(uri, pattern string) (map[string]string, error, int) {
-	parameters := make(map[string]string)
-	passes, ok := regexp.Match(uriParameter, []byte(pattern))
-	if ok != nil {
-		return nil, fmt.Errorf("Bad construction of regexp: %s", ok), http.StatusInternalServerError
-	}
-	if !passes {
-		return nil, fmt.Errorf("The regexp pattern doesn't match with uri parameter rules"), http.StatusInternalServerError
-	}
-
-	re := regexp.MustCompile(uriParameter)
-	keys := strings.Split(strings.Trim(re.ReplaceAllString(pattern, "$3 "), " "), " ")
-	uriToMatch := fmt.Sprintf("^%s$", re.ReplaceAllString(pattern, "$1/($4)"))
-	passes, _ = regexp.Match(uriToMatch, []byte(uri))
-
-	if !passes {
-		return nil, fmt.Errorf("Route not found"), http.StatusNotFound
-	}
-
-	re = regexp.MustCompile(uriToMatch)
-	parsed := re.FindStringSubmatch(uri)[1:]
-	for i, key := range keys {
-		parameters[key] = parsed[i]
-	}
-
-	return parameters, nil, 0
+type Route struct {
+	Path       string
+	Parameters []string
+	Handler    func(http.ResponseWriter, *Request)
 }
 
 type errorResponse struct {
 	Error string `json:"error"`
 	Code  int    `json:"code"`
+}
+
+type Router struct {
+	routes map[HttpVerb][]Route
+}
+
+func checkRoute(uri string, r Route) (map[string]string, error) {
+	passes, _ := regexp.Match(r.Path, []byte(uri))
+
+	if !passes {
+		return nil, fmt.Errorf("Route not found")
+	}
+
+	re := regexp.MustCompile(r.Path)
+	parsed := re.FindStringSubmatch(uri)[1:]
+	parameters := make(map[string]string)
+
+	for i, key := range r.Parameters {
+		parameters[key] = parsed[i]
+	}
+
+	return parameters, nil
+}
+
+func getParameters(pattern string) (string, []string, error) {
+	const uriParameter = `(/\w+)/(?P<params>{(?P<key>\w+)\:(?P<reg>[^{}]+)})?`
+	var keys []string = []string{}
+	passes, ok := regexp.Match(uriParameter, []byte(pattern))
+	if ok != nil {
+		return "", keys, fmt.Errorf("Bad construction of regexp: %s", ok)
+	}
+	if !passes {
+		return "", keys, fmt.Errorf("The regexp pattern doesn't match with uri parameter rules")
+	}
+
+	re := regexp.MustCompile(uriParameter)
+	uriToMatch := fmt.Sprintf("^%s$", re.ReplaceAllString(pattern, "$1/($4)"))
+	keys = strings.Split(strings.Trim(re.ReplaceAllString(pattern, "$3 "), " "), " ")
+
+	return uriToMatch, keys, nil
 }
 
 func GetErrorResponse(w http.ResponseWriter, err string, status int) {
@@ -70,19 +86,44 @@ func GetErrorResponse(w http.ResponseWriter, err string, status int) {
 	http.Error(w, string(serialized), status)
 }
 
-func Bypass(route Route) func(http.ResponseWriter, *http.Request) {
-	return func(w http.ResponseWriter, r *http.Request) {
-		if route.Verb != HttpVerb(r.Method) {
-			GetErrorResponse(w, fmt.Sprintf("Method %s not allowed", r.Method), http.StatusMethodNotAllowed)
-			return
-		}
-		parameters, ok, code := getParameters(r.URL.Path, route.Path)
+func (r *Router) ProcessRoutes(routes map[string][]RouteParameter) *Router {
+	r.routes = make(map[HttpVerb][]Route)
+	for key, routeModule := range routes {
+		log.Println("Injecting route module " + key)
+		for _, routeParameter := range routeModule {
+			uriToMatch, parameters, ok := getParameters(routeParameter.Path)
+			if ok != nil {
+				log.Println("Error processing route " + routeParameter.Path)
+				break
+			}
 
-		if ok != nil {
-			GetErrorResponse(w, ok.Error(), code)
-			return
+			route := Route{
+				Path:       uriToMatch,
+				Parameters: parameters,
+				Handler:    routeParameter.Handler,
+			}
+
+			if r.routes[routeParameter.Verb] == nil {
+				r.routes[routeParameter.Verb] = make([]Route, 0)
+			}
+			r.routes[routeParameter.Verb] = append(r.routes[routeParameter.Verb], route)
 		}
-		request := Request{Original: r, Params: parameters}
-		route.Handler(w, &request)
 	}
+	return r
+}
+
+func (r *Router) ServeHTTP(w http.ResponseWriter, req *http.Request) {
+	route := req.URL.Path
+	fmt.Println(r)
+	for _, r := range r.routes[HttpVerb(req.Method)] {
+		parameters, err := checkRoute(route, r)
+		if err != nil {
+			continue
+		}
+		request := Request{Original: req, Params: parameters}
+		r.Handler(w, &request)
+		return
+	}
+
+	GetErrorResponse(w, http.StatusText(http.StatusNotFound), http.StatusNotFound)
 }

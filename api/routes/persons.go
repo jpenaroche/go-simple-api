@@ -5,9 +5,14 @@ import (
 	"github.com/jpenaroche/go-simple-api/utils"
 )
 
-var Persons []utils.Route = []utils.Route{
+var Persons []utils.RouteParameter = []utils.RouteParameter{
 	{
 		Path:    `/persons/{id:\d+}`,
+		Verb:    utils.Get,
+		Handler: persons.GetPerson,
+	},
+	{
+		Path:    `/people/{id:\d+}`,
 		Verb:    utils.Get,
 		Handler: persons.GetPerson,
 	},
